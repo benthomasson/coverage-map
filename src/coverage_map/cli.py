@@ -15,13 +15,20 @@ import coverage
 
 def is_test_file(filename: str) -> bool:
     """Check if a filename is a test file."""
-    # Check common test patterns
-    basename = os.path.basename(filename)
+    # Normalize path separators for cross-platform support
+    normalized = filename.replace("\\", "/")
+
+    # Check common test patterns in basename
+    basename = os.path.basename(normalized)
     if basename.startswith("test_") or basename.endswith("_test.py"):
         return True
-    # Check if in a tests directory
-    if "/tests/" in filename or filename.startswith("tests/"):
+
+    # Check if "tests" is a path segment (not just substring)
+    # This avoids false positives like "attests/foo.py"
+    parts = normalized.split("/")
+    if "tests" in parts:
         return True
+
     return False
 
 
@@ -120,13 +127,16 @@ show_contexts = True
     # Load coverage data
     click.echo("\nAnalyzing coverage data...", err=True)
 
-    coverage_file = Path(".coverage")
-    if not coverage_file.exists():
-        click.echo("Error: No .coverage file found. pytest may have failed to run.", err=True)
-        click.echo("Check the pytest output above for errors.", err=True)
+    # Create coverage object to get the actual data file path
+    # (respects COVERAGE_FILE env var and config)
+    cov = coverage.Coverage()
+    data_file = cov.config.data_file
+
+    if not Path(data_file).exists():
+        click.echo(f"Error: Coverage data file '{data_file}' not found.", err=True)
+        click.echo("pytest may have failed to run. Check the output above for errors.", err=True)
         sys.exit(1)
 
-    cov = coverage.Coverage()
     try:
         cov.load()
     except coverage.CoverageException as e:
@@ -216,20 +226,39 @@ def tests_for(source_file, mapping, json_output):
 
     # Try exact match first
     tests = file_to_tests.get(source_file, [])
+    matched_file = source_file if tests else None
 
     # If not found, try partial match
     if not tests:
+        # Collect all partial matches to warn about ambiguity
+        partial_matches = []
         for file_path, file_tests in file_to_tests.items():
             if source_file in file_path or file_path.endswith(source_file):
-                tests = file_tests
-                source_file = file_path
-                break
+                partial_matches.append((file_path, file_tests))
+
+        if partial_matches:
+            # Use first match
+            matched_file, tests = partial_matches[0]
+
+            # Warn if multiple matches exist
+            if len(partial_matches) > 1:
+                click.echo(click.style(
+                    f"Warning: '{source_file}' matches {len(partial_matches)} files, showing first match.",
+                    fg="yellow"
+                ), err=True)
+                click.echo(click.style("Other matches:", fg="yellow"), err=True)
+                for other_file, _ in partial_matches[1:]:
+                    click.echo(click.style(f"  {other_file}", fg="yellow"), err=True)
+                click.echo("", err=True)
 
     if json_output:
-        click.echo(json.dumps({"file": source_file, "tests": tests}, indent=2))
+        result = {"file": matched_file or source_file, "tests": tests}
+        if not tests and matched_file is None:
+            result["file"] = source_file
+        click.echo(json.dumps(result, indent=2))
     else:
         if tests:
-            click.echo(f"Tests covering {source_file}:")
+            click.echo(f"Tests covering {matched_file}:")
             for test in tests:
                 click.echo(f"  {test}")
             click.echo(f"\nTotal: {len(tests)} test(s)")

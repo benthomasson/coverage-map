@@ -1,6 +1,6 @@
 [project]
 name = "coverage-map"
-version = "0.3.0"
+version = "0.4.0"
 description = "Map source files to tests using coverage context tracking"
 readme = "README.md"
 license = { text = "MIT" }
