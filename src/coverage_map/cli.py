@@ -53,11 +53,12 @@ def collect(source, tests, output, pytest_args):
     click.echo(f"  Tests: {tests}", err=True)
 
     # Build pytest command
+    # Use dynamic context to track coverage per-test
     # Disable pytest-cov plugin and clear addopts to avoid conflicts
     cmd = [
         sys.executable, "-m", "coverage", "run",
         "--source", source,
-        "--context", "test",
+        "--dynamic-context", "test_function",  # Track per-test coverage
         "-m", "pytest",
         "-p", "no:pytest_cov",  # Disable pytest-cov (we use coverage directly)
         "-o", "addopts=",  # Clear addopts from pyproject.toml
