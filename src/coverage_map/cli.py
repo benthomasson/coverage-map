@@ -215,11 +215,21 @@ def tests_for(source_file, mapping, json_output):
     is_flag=True,
     help="Output as JSON",
 )
-def files_for(test_name, mapping, json_output):
+@click.option(
+    "--all",
+    "-a",
+    "match_all",
+    is_flag=True,
+    help="Aggregate files from all matching tests (useful for package prefixes)",
+)
+def files_for(test_name, mapping, json_output, match_all):
     """
     Show which source files a test covers.
 
     Example: coverage-map files-for test_auth.py::test_login
+
+    Use --all to aggregate files from all tests matching a prefix:
+      coverage-map files-for tests.unit.core --all
     """
     try:
         with open(mapping) as f:
@@ -232,23 +242,42 @@ def files_for(test_name, mapping, json_output):
 
     # Try exact match first
     files = test_to_files.get(test_name, [])
+    matched_tests = [test_name] if files else []
 
-    # If not found, try partial match
-    if not files:
+    # If not found or --all flag, try partial match
+    if not files or match_all:
+        all_files: set[str] = set(files) if files else set()
+        matched_tests = []
         for test, test_files in test_to_files.items():
             if test_name in test:
-                files = test_files
-                test_name = test
-                break
+                matched_tests.append(test)
+                if match_all:
+                    all_files.update(test_files)
+                elif not files:
+                    # First match only (original behavior)
+                    files = test_files
+                    test_name = test
+                    matched_tests = [test]
+                    break
+        if match_all:
+            files = sorted(all_files)
 
     if json_output:
-        click.echo(json.dumps({"test": test_name, "files": files}, indent=2))
+        result = {"pattern": test_name, "files": files}
+        if match_all:
+            result["matched_tests"] = len(matched_tests)
+        click.echo(json.dumps(result, indent=2))
     else:
         if files:
-            click.echo(f"Files covered by {test_name}:")
+            if match_all and len(matched_tests) > 1:
+                click.echo(f"Files covered by {len(matched_tests)} tests matching '{test_name}':")
+            else:
+                click.echo(f"Files covered by {test_name}:")
             for f in files:
                 click.echo(f"  {f}")
             click.echo(f"\nTotal: {len(files)} file(s)")
+            if match_all and len(matched_tests) > 1:
+                click.echo(f"({len(matched_tests)} tests matched)")
         else:
             click.echo(f"No files found for test {test_name}")
 
