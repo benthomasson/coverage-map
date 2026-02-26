@@ -28,6 +28,9 @@ coverage-map tests-for src/auth/client.py
 
 ```bash
 coverage-map files-for tests/test_auth.py::test_login
+
+# Aggregate files from all tests matching a pattern
+coverage-map files-for tests.unit.core --all
 ```
 
 ### Show summary
