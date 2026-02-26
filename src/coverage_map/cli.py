@@ -53,11 +53,14 @@ def collect(source, tests, output, pytest_args):
     click.echo(f"  Tests: {tests}", err=True)
 
     # Build pytest command
+    # Disable pytest-cov plugin and clear addopts to avoid conflicts
     cmd = [
         sys.executable, "-m", "coverage", "run",
         "--source", source,
         "--context", "test",
         "-m", "pytest",
+        "-p", "no:pytest_cov",  # Disable pytest-cov (we use coverage directly)
+        "-o", "addopts=",  # Clear addopts from pyproject.toml
         tests,
         "-v",
     ]
