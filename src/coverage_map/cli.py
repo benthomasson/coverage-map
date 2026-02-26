@@ -1,6 +1,7 @@
 """CLI for coverage-map."""
 
 import json
+import os
 import subprocess
 import sys
 from collections import defaultdict
@@ -53,12 +54,10 @@ def collect(source, tests, output, pytest_args):
     click.echo(f"  Tests: {tests}", err=True)
 
     # Build pytest command
-    # Use dynamic context to track coverage per-test
     # Disable pytest-cov plugin and clear addopts to avoid conflicts
     cmd = [
         sys.executable, "-m", "coverage", "run",
         "--source", source,
-        "--dynamic-context", "test_function",  # Track per-test coverage
         "-m", "pytest",
         "-p", "no:pytest_cov",  # Disable pytest-cov (we use coverage directly)
         "-o", "addopts=",  # Clear addopts from pyproject.toml
@@ -69,9 +68,14 @@ def collect(source, tests, output, pytest_args):
     if pytest_args:
         cmd.extend(pytest_args.split())
 
+    # Set environment for dynamic context tracking
+    env = os.environ.copy()
+    env["COVERAGE_DYNAMIC_CONTEXT"] = "test_function"
+
     # Run pytest with coverage
     click.echo(f"\nRunning: {' '.join(cmd)}", err=True)
-    result = subprocess.run(cmd)
+    click.echo("  (with COVERAGE_DYNAMIC_CONTEXT=test_function)", err=True)
+    result = subprocess.run(cmd, env=env)
 
     if result.returncode != 0:
         click.echo(click.style(f"Warning: pytest exited with code {result.returncode}", fg="yellow"), err=True)
