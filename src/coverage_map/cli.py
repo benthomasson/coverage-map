@@ -2,13 +2,27 @@
 
 import json
 import os
+import shlex
 import subprocess
 import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 
 import click
 import coverage
+
+
+def is_test_file(filename: str) -> bool:
+    """Check if a filename is a test file."""
+    # Check common test patterns
+    basename = os.path.basename(filename)
+    if basename.startswith("test_") or basename.endswith("_test.py"):
+        return True
+    # Check if in a tests directory
+    if "/tests/" in filename or filename.startswith("tests/"):
+        return True
+    return False
 
 
 @click.group()
@@ -49,12 +63,21 @@ def collect(source, tests, output, pytest_args):
     This runs all tests while tracking which tests cover which source files.
     Results are saved to a JSON file for later querying.
     """
+    # Validate source directory exists
+    if not Path(source).exists():
+        click.echo(f"Error: Source directory '{source}' does not exist.", err=True)
+        sys.exit(1)
+
+    # Validate tests directory exists
+    if not Path(tests).exists():
+        click.echo(f"Error: Tests directory '{tests}' does not exist.", err=True)
+        sys.exit(1)
+
     click.echo(f"Running pytest with coverage context tracking...", err=True)
     click.echo(f"  Source: {source}", err=True)
     click.echo(f"  Tests: {tests}", err=True)
 
     # Create temporary .coveragerc with dynamic context settings
-    import tempfile
     coveragerc_content = f"""[run]
 source = {source}
 dynamic_context = test_function
@@ -81,7 +104,8 @@ show_contexts = True
         ]
 
         if pytest_args:
-            cmd.extend(pytest_args.split())
+            # Use shlex.split to handle quoted arguments properly
+            cmd.extend(shlex.split(pytest_args))
 
         # Run pytest with coverage
         click.echo(f"\nRunning: {' '.join(cmd)}", err=True)
@@ -95,8 +119,19 @@ show_contexts = True
 
     # Load coverage data
     click.echo("\nAnalyzing coverage data...", err=True)
+
+    coverage_file = Path(".coverage")
+    if not coverage_file.exists():
+        click.echo("Error: No .coverage file found. pytest may have failed to run.", err=True)
+        click.echo("Check the pytest output above for errors.", err=True)
+        sys.exit(1)
+
     cov = coverage.Coverage()
-    cov.load()
+    try:
+        cov.load()
+    except coverage.CoverageException as e:
+        click.echo(f"Error loading coverage data: {e}", err=True)
+        sys.exit(1)
 
     data = cov.get_data()
 
@@ -107,7 +142,7 @@ show_contexts = True
 
     for filename in data.measured_files():
         # Skip test files themselves
-        if "/tests/" in filename or filename.startswith("tests/"):
+        if is_test_file(filename):
             continue
 
         contexts = data.contexts_by_lineno(filename)
@@ -125,8 +160,8 @@ show_contexts = True
             for ctx in line_contexts:
                 # Context format is typically "test_file.py::test_function|run"
                 # or just the test name depending on setup
-                if ctx and ctx != "":
-                    # Clean up context name
+                if ctx:
+                    # Clean up context name (remove "|run" suffix if present)
                     test_name = ctx.split("|")[0] if "|" in ctx else ctx
                     if test_name:
                         file_to_tests[rel_path].add(test_name)
@@ -240,27 +275,28 @@ def files_for(test_name, mapping, json_output, match_all):
 
     test_to_files = data.get("test_to_files", {})
 
-    # Try exact match first
-    files = test_to_files.get(test_name, [])
-    matched_tests = [test_name] if files else []
-
-    # If not found or --all flag, try partial match
-    if not files or match_all:
-        all_files: set[str] = set(files) if files else set()
-        matched_tests = []
+    if match_all:
+        # Aggregate mode: find all tests matching the pattern
+        all_files: set[str] = set()
+        matched_tests: list[str] = []
         for test, test_files in test_to_files.items():
             if test_name in test:
                 matched_tests.append(test)
-                if match_all:
-                    all_files.update(test_files)
-                elif not files:
-                    # First match only (original behavior)
+                all_files.update(test_files)
+        files = sorted(all_files)
+    else:
+        # Single match mode: try exact match first, then partial
+        files = test_to_files.get(test_name, [])
+        matched_tests = [test_name] if files else []
+
+        if not files:
+            # Try partial match, return first hit
+            for test, test_files in test_to_files.items():
+                if test_name in test:
                     files = test_files
                     test_name = test
                     matched_tests = [test]
                     break
-        if match_all:
-            files = sorted(all_files)
 
     if json_output:
         result = {"pattern": test_name, "files": files}

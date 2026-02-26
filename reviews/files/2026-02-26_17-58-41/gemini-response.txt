@@ -1,0 +1,6 @@
+Model gemini failed: (node:36356) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+When using Vertex AI, you must specify either:
+• GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION environment variables.
+• GOOGLE_API_KEY environment variable (if using express mode).
+Update your environment and try again (no reload needed if using .env)!
