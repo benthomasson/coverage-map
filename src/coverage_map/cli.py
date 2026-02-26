@@ -14,19 +14,26 @@ import coverage
 
 
 def is_test_file(filename: str) -> bool:
-    """Check if a filename is a test file."""
+    """Check if a filename is a test file or test infrastructure."""
     # Normalize path separators for cross-platform support
     normalized = filename.replace("\\", "/")
-
-    # Check common test patterns in basename
     basename = os.path.basename(normalized)
-    if basename.startswith("test_") or basename.endswith("_test.py"):
+
+    # Check test infrastructure files
+    if basename == "conftest.py":
         return True
 
-    # Check if "tests" is a path segment (not just substring)
+    # Check common test patterns in basename
+    # test_*.py, *_test.py, *_tests.py
+    if basename.startswith("test_"):
+        return True
+    if basename.endswith("_test.py") or basename.endswith("_tests.py"):
+        return True
+
+    # Check if "tests" or "test" is a path segment (not just substring)
     # This avoids false positives like "attests/foo.py"
     parts = normalized.split("/")
-    if "tests" in parts:
+    if "tests" in parts or "test" in parts:
         return True
 
     return False
@@ -112,7 +119,12 @@ show_contexts = True
 
         if pytest_args:
             # Use shlex.split to handle quoted arguments properly
-            cmd.extend(shlex.split(pytest_args))
+            try:
+                cmd.extend(shlex.split(pytest_args))
+            except ValueError as e:
+                click.echo(f"Error: Invalid --pytest-args format: {e}", err=True)
+                click.echo("Hint: Check for unmatched quotes in the argument string.", err=True)
+                sys.exit(1)
 
         # Run pytest with coverage
         click.echo(f"\nRunning: {' '.join(cmd)}", err=True)

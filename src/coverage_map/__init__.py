@@ -1,3 +1,3 @@
 """Coverage-map: Map source files to tests using coverage context tracking."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
