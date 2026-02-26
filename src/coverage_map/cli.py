@@ -53,29 +53,42 @@ def collect(source, tests, output, pytest_args):
     click.echo(f"  Source: {source}", err=True)
     click.echo(f"  Tests: {tests}", err=True)
 
-    # Build pytest command
-    # Disable pytest-cov plugin and clear addopts to avoid conflicts
-    cmd = [
-        sys.executable, "-m", "coverage", "run",
-        "--source", source,
-        "-m", "pytest",
-        "-p", "no:pytest_cov",  # Disable pytest-cov (we use coverage directly)
-        "-o", "addopts=",  # Clear addopts from pyproject.toml
-        tests,
-        "-v",
-    ]
+    # Create temporary .coveragerc with dynamic context settings
+    import tempfile
+    coveragerc_content = f"""[run]
+source = {source}
+dynamic_context = test_function
 
-    if pytest_args:
-        cmd.extend(pytest_args.split())
+[report]
+show_contexts = True
+"""
 
-    # Set environment for dynamic context tracking
-    env = os.environ.copy()
-    env["COVERAGE_DYNAMIC_CONTEXT"] = "test_function"
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.coveragerc', delete=False) as f:
+        f.write(coveragerc_content)
+        coveragerc_path = f.name
 
-    # Run pytest with coverage
-    click.echo(f"\nRunning: {' '.join(cmd)}", err=True)
-    click.echo("  (with COVERAGE_DYNAMIC_CONTEXT=test_function)", err=True)
-    result = subprocess.run(cmd, env=env)
+    try:
+        # Build pytest command
+        # Disable pytest-cov plugin and clear addopts to avoid conflicts
+        cmd = [
+            sys.executable, "-m", "coverage", "run",
+            f"--rcfile={coveragerc_path}",
+            "-m", "pytest",
+            "-p", "no:pytest_cov",  # Disable pytest-cov (we use coverage directly)
+            "-o", "addopts=",  # Clear addopts from pyproject.toml
+            tests,
+            "-v",
+        ]
+
+        if pytest_args:
+            cmd.extend(pytest_args.split())
+
+        # Run pytest with coverage
+        click.echo(f"\nRunning: {' '.join(cmd)}", err=True)
+        result = subprocess.run(cmd)
+    finally:
+        # Clean up temp file
+        os.unlink(coveragerc_path)
 
     if result.returncode != 0:
         click.echo(click.style(f"Warning: pytest exited with code {result.returncode}", fg="yellow"), err=True)
