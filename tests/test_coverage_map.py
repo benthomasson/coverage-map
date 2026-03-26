@@ -526,6 +526,57 @@ class TestCollectEndToEnd:
         assert "tests" in result.output.lower()
         assert "passed" in result.output.lower()
 
+    def test_collect_then_tests_for_run(self, sample_project, tmp_path):
+        """e2e: collect then tests-for --run actually executes the relevant tests."""
+        output_file = str(tmp_path / "coverage-map.json")
+        self._run_collect(sample_project, output_file)
+
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(sample_project)
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["tests-for", "math_utils.py", "-m", output_file, "--run"],
+            )
+            # math_utils tests all pass, so exit code should be 0
+            assert result.exit_code == 0
+            assert "Running" in result.output
+        finally:
+            os.chdir(old_cwd)
+
+    def test_collect_then_tests_for_run_with_failures(self, sample_project, tmp_path):
+        """e2e: --run exits non-zero when covering tests include failures."""
+        output_file = str(tmp_path / "coverage-map.json")
+        self._run_collect(sample_project, output_file)
+
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(sample_project)
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["tests-for", "string_utils.py", "-m", output_file, "--run"],
+            )
+            # string_utils has an intentionally failing test
+            assert result.exit_code != 0
+            assert "Running" in result.output
+        finally:
+            os.chdir(old_cwd)
+
+    def test_collect_then_tests_for_run_no_match(self, sample_project, tmp_path):
+        """e2e: --run with no matching tests shows 'No tests found'."""
+        output_file = str(tmp_path / "coverage-map.json")
+        self._run_collect(sample_project, output_file)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["tests-for", "nonexistent.py", "-m", output_file, "--run"],
+        )
+        assert result.exit_code == 0
+        assert "No tests found" in result.output
+
     def test_collect_then_tests_for_json(self, sample_project, tmp_path):
         """e2e: collect then tests-for --json-output --results returns real statuses."""
         output_file = str(tmp_path / "coverage-map.json")
