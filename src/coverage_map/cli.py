@@ -441,7 +441,10 @@ def tests_for(source_file, mapping, json_output, results, run):
     matched_file, tests = _find_tests_for_file(file_to_tests, source_file)
 
     # --run: re-run the relevant tests with pytest
-    if run and tests:
+    if run:
+        if not tests:
+            click.echo(f"No tests found covering '{source_file}'")
+            return
         click.echo(f"Running {len(tests)} test(s) covering {matched_file}...\n", err=True)
         cmd = [sys.executable, "-m", "pytest", "-v"] + list(tests)
         proc = subprocess.run(cmd)
