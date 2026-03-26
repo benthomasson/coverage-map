@@ -1,3 +1,5 @@
 reviews/
 uv.lock
-uv.lock
+__pycache__/
+*.pyc
+.coverage
